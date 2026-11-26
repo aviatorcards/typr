@@ -1,6 +1,6 @@
 # typr
 
-A typing test in the terminal. Words on screen, a caret, and a result when you finish.
+A typing test in the terminal. Words on screen, a caret, and a result when you finish. On a larger window the words and the result are drawn as bigger block letters. Press `=` if those letters are hard to read and typr will use your terminal's own font.
 
 ```bash
 python3 -m typr
@@ -17,6 +17,7 @@ The clock starts on the first character you type. Backspace fixes the current wo
 | `↑` `↓` | 10, 25, 50, 100 words | | |
 | `[` `]` | english, 1k, punct, numbers, expert, quotes | | |
 | `\` | color theme | | color theme |
+| `=` `-` | block or plain letters | | block or plain letters |
 | `tab` | new words | restart | new test |
 | `ctrl+r` | retry these words | retry these words | retry these words |
 | `ctrl+w` | | clear the current word | |
@@ -32,6 +33,7 @@ python3 -m typr -w 50 --punct
 python3 -m typr -c quotes
 python3 -m typr --passage speech.txt
 python3 -m typr --theme nord
+python3 -m typr --font plain
 ```
 
 `--seed 1` repeats the same words every restart.

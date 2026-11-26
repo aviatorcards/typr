@@ -8,6 +8,18 @@ import time
 from dataclasses import dataclass
 
 from typr.engine import Config, Stats, Test, make_test, new_rng
+from typr.font import (
+    active_font,
+    advance,
+    block_rows,
+    char_columns,
+    figure_scale,
+    ink_rows,
+    line_height,
+    result_plan,
+    text_scale,
+    write,
+)
 from typr.history import History
 from typr.layout import layout, window
 from typr.present import (
@@ -15,6 +27,7 @@ from typr.present import (
     fit_config,
     help_lines,
     hint_line,
+    text_column,
     round_half_up,
     sparkline,
     span_width,
@@ -22,6 +35,7 @@ from typr.present import (
 from typr.settings import (
     Settings,
     cycle_corpus,
+    cycle_font,
     cycle_theme,
     cycle_time,
     cycle_words,
@@ -137,6 +151,9 @@ class App:
         if key == "\\" and not self._running():
             cycle_theme(self.settings)
             self._attr_theme = None
+            return True
+        if key in ("=", "-") and not self._running():
+            cycle_font(self.settings, 1 if key == "=" else -1)
             return True
         if key == "tab":
             self._new()
@@ -269,7 +286,7 @@ class App:
         elif self.phase == "help":
             _draw_help(stdscr, attrs)
         elif self.phase == "results" and self.result is not None:
-            _draw_results(stdscr, attrs, self.result, self.test)
+            _draw_results(stdscr, attrs, self.result, self.test, self.settings.font)
         else:
             _draw_test(stdscr, attrs, self.settings, self.test, self.history, blink, now)
         stdscr.refresh()
@@ -300,78 +317,108 @@ def _draw_help(stdscr, attrs: dict[str, int]) -> None:
 
 def _draw_test(stdscr, attrs, settings: Settings, test: Test, history: History, blink: bool, now: float) -> None:
     height, width = stdscr.getmaxyx()
-    column = max(20, min(72, width - 4))
+    if active_font(settings.font) == "plain":
+        _draw_test_plain(stdscr, attrs, settings, test, history, blink, now)
+        return
+    longest = max((len(word) for word in test.targets), default=8)
+    scale = text_scale(width, height, longest)
+    if scale <= 0:
+        _draw_test_plain(stdscr, attrs, settings, test, history, blink, now)
+        return
+    columns = char_columns(width, scale)
+    pixel_w = columns * advance(scale)
+    left = max(0, (width - pixel_w) // 2)
+    top = max(0, (height - block_rows(scale)) // 2)
+    phase = "run" if test.started and not test.finished else "idle"
+    _paint(stdscr, top, left, fit_config(settings, pixel_w), attrs, mute=phase == "run")
+    current = min(test.current, max(0, len(test.targets) - 1))
+    lines = window(layout(test.targets, test.typed, current, columns, blink), current)
+    y = top + 2
+    step = line_height(scale)
+    for index, line in enumerate(lines):
+        _paint_glyphs(stdscr, y, left, line.cells, scale, attrs)
+        y += step
+        if index < len(lines) - 1:
+            y += 1
+    y += 1
+    best = _best(history, test.config.bucket)
+    _paint(stdscr, y, left, _live_stats(test, best, pixel_w, now), attrs)
+    _put(stdscr, y + 2, left, hint_line(phase, pixel_w), attrs["dim"])
+
+
+def _draw_test_plain(stdscr, attrs, settings: Settings, test: Test, history: History, blink: bool, now: float) -> None:
+    height, width = stdscr.getmaxyx()
+    column = text_column(settings, width)
     left = max(0, (width - column) // 2)
-    block = 9
-    top = max(0, (height - block) // 2)
+    top = max(0, (height - 9) // 2)
     phase = "run" if test.started and not test.finished else "idle"
     _paint(stdscr, top, left, fit_config(settings, column), attrs, mute=phase == "run")
-    lines = window(
-        layout(test.targets, test.typed, min(test.current, max(0, len(test.targets) - 1)), column, blink),
-        min(test.current, max(0, len(test.targets) - 1)),
-    )
+    current = min(test.current, max(0, len(test.targets) - 1))
+    lines = window(layout(test.targets, test.typed, current, column, blink), current)
     for index, line in enumerate(lines):
         _paint_cells(stdscr, top + 2 + index, left, line.cells, attrs, column)
     best = _best(history, test.config.bucket)
     _paint(stdscr, top + 6, left, _live_stats(test, best, column, now), attrs)
-    hint = hint_line(phase, column)
-    _put(stdscr, top + 8, left, hint, attrs["dim"])
+    _put(stdscr, top + 8, left, hint_line(phase, column), attrs["dim"])
 
 
-def _draw_results(stdscr, attrs, view: ResultView, test: Test) -> None:
+def _draw_results(stdscr, attrs, view: ResultView, test: Test, font: str = "block") -> None:
     height, width = stdscr.getmaxyx()
-    column = max(20, min(72, width - 4))
-    left = max(0, (width - column) // 2)
-    show_digits = height >= 16 and column >= 24
-    show_spark = height >= 22
-    show_chars = height >= 18
-    show_history = height >= 20
-    rows = 1 + 1 + (3 if show_digits else 1) + 1 + 1
-    if show_spark:
-        rows += 2
-    if show_chars:
-        rows += 2
-    if show_history:
-        rows += 1 + (1 if view.recent else 0)
-    if view.warning:
-        rows += 1
-    rows += 2
-    top = max(0, (height - rows) // 2)
-    y = top
+    number = str(round_half_up(view.stats.wpm))
+    scale = 0 if active_font(font) == "plain" else figure_scale(width, height)
+    if scale >= 1:
+        figure = write(number, scale)
+    elif height >= 16 and width >= 40:
+        figure = digits(round_half_up(view.stats.wpm))
+    else:
+        figure = []
+    note, note_role = _result_note(view)
+    figure_w = len(figure[0]) if figure else 0
+    text_w = min(72, max(20, width - 4))
+    side = 0
+    if figure:
+        side = 2 + len("wpm")
+        if note and figure_w + 2 + len(note) <= width - 2:
+            side = max(side, 2 + len(note))
+    beside = bool(note) and bool(figure) and figure_w + 2 + len(note) <= width - 2
+    block_w = min(width - 2, max(text_w, figure_w + side))
+    show_chars, show_spark, show_history, show_note, rows = result_plan(
+        height, len(figure) if figure else 1, bool(view.recent), bool(note) and not beside
+    )
+    left = max(0, (width - block_w) // 2)
+    y = max(0, (height - rows) // 2)
+    number_role = "good" if view.new_best else "accent"
     _put(stdscr, y, left, view.title, attrs["dim"])
     y += 2
-    figure = digits(round_half_up(view.stats.wpm))
-    number_role = "good" if view.new_best else "accent"
-    if show_digits:
+    if figure:
         for row in figure:
             _put(stdscr, y, left, row, attrs[number_role])
             y += 1
-        label_x = left + len(figure[0]) + 2
-        _put(stdscr, top + 3, label_x, "wpm", attrs["dim"])
-        if view.new_best:
-            _put(stdscr, top + 4, label_x, "new best", attrs["good"])
-        elif view.warning:
-            _put(stdscr, top + 4, label_x, view.warning, attrs["warn"])
+        label_x = left + figure_w + 2
+        _put(stdscr, y - len(figure) + len(figure) // 2, label_x, "wpm", attrs["dim"])
+        if beside:
+            _put(stdscr, y - len(figure) + len(figure) // 2 + 1, label_x, note, attrs[note_role])
         y += 1
     else:
-        text = f"{round_half_up(view.stats.wpm)} wpm"
+        text = f"{number} wpm"
         if view.new_best:
             text += "   new best"
         _put(stdscr, y, left, text, attrs[number_role])
         y += 2
-        if view.warning and not view.new_best:
-            _put(stdscr, y - 1, left, view.warning, attrs["warn"])
+    if show_note:
+        _put(stdscr, y, left, note, attrs[note_role])
+        y += 1
     _paint(stdscr, y, left, _metrics(view.stats), attrs)
     y += 2
-    if show_spark:
-        bars = sparkline(test.samples, view.stats.seconds, min(column, 56))
-        _paint_bars(stdscr, y, left, bars, attrs)
-        y += 2
     if show_chars:
         spans = _chars(view.stats)
-        if span_width(spans) > column:
+        if span_width(spans) > block_w:
             spans = _chars(view.stats, compact=True)
         _paint(stdscr, y, left, spans, attrs)
+        y += 2
+    if show_spark:
+        bars = sparkline(test.samples, view.stats.seconds, min(block_w, max(figure_w, 24)))
+        _paint_bars(stdscr, y, left, bars, attrs)
         y += 2
     if show_history:
         _paint(stdscr, y, left, _history_line(view), attrs)
@@ -380,7 +427,37 @@ def _draw_results(stdscr, attrs, view: ResultView, test: Test) -> None:
             _paint_recent(stdscr, y, left, view.recent, attrs)
             y += 1
     y += 1
-    _put(stdscr, y, left, hint_line("results", column), attrs["dim"])
+    _put(stdscr, y, left, hint_line("results", block_w), attrs["dim"])
+
+
+def _result_note(view: ResultView) -> tuple[str, str]:
+    if view.new_best:
+        return "new best", "good"
+    if view.warning:
+        return view.warning, "warn"
+    return "", "dim"
+
+
+def _paint_glyphs(stdscr, y: int, x: int, cells, scale: int, attrs) -> None:
+    if not cells:
+        return
+    gap = " " * scale
+    rasters = [ink_rows(cell.ch, scale) for cell in cells]
+    for row in range(len(rasters[0])):
+        column = x
+        index = 0
+        while index < len(cells):
+            kind = cells[index].kind
+            parts = [rasters[index][row]]
+            index += 1
+            while index < len(cells) and cells[index].kind == kind:
+                parts.append(gap)
+                parts.append(rasters[index][row])
+                index += 1
+            _put(stdscr, y + row, column, "".join(parts), attrs.get(_KIND.get(kind, "text"), 0))
+            column += sum(len(part) for part in parts)
+            if index < len(cells):
+                column += len(gap)
 
 
 def _live_stats(test: Test, best: float | None, width: int, now: float) -> list[tuple[str, str]]:

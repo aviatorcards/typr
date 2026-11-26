@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typr.font import active_font
 from typr.settings import Settings, corpus_label, summary
 
 # Three rows, each glyph three columns. A space separates digits.
@@ -86,7 +87,12 @@ def _chip(value: str, selected: bool) -> tuple[str, str]:
     return text, "selected" if selected else "idle"
 
 
-def config_spans(settings: Settings, show_name: bool, show_theme: bool) -> list[tuple[str, str]]:
+def config_spans(
+    settings: Settings,
+    show_name: bool,
+    show_theme: bool,
+    show_font: bool = True,
+) -> list[tuple[str, str]]:
     live = settings.corpus not in ("quotes", "passage")
     spans: list[tuple[str, str]] = []
     if show_name:
@@ -105,15 +111,36 @@ def config_spans(settings: Settings, show_name: bool, show_theme: bool) -> list[
         spans.append(_chip(str(value), selected))
     spans.append(("   ", "dim"))
     spans.append((corpus_label(settings), "selected"))
+    if show_font:
+        spans.append(("  ", "dim"))
+        spans.append((active_font(settings.font), "text"))
     if show_theme:
         spans.append(("  ", "dim"))
         spans.append((settings.theme, "dim"))
     return spans
 
 
+def text_column(settings: Settings, width: int) -> int:
+    """Width of the plain-font word column.
+
+    A huge window stays near 72 columns. A smaller one still grows enough to
+    keep the font name and the theme on the option line.
+    """
+    needed = span_width(config_spans(settings, True, True, True))
+    room = max(20, width - 4)
+    return min(room, max(72, needed))
+
+
 def fit_config(settings: Settings, width: int) -> list[tuple[str, str]]:
-    for show_name, show_theme in ((True, True), (False, True), (False, False)):
-        spans = config_spans(settings, show_name, show_theme)
+    # Drop the theme, then the name, before the font. The font is how you
+    # get ordinary letters back when the block face is hard to read.
+    for show_name, show_theme, show_font in (
+        (True, True, True),
+        (True, False, True),
+        (False, False, True),
+        (False, False, False),
+    ):
+        spans = config_spans(settings, show_name, show_theme, show_font)
         if span_width(spans) <= width:
             return spans
     return [(summary(settings), "selected")]
@@ -121,9 +148,9 @@ def fit_config(settings: Settings, width: int) -> list[tuple[str, str]]:
 
 def hint_line(phase: str, width: int) -> str:
     full = {
-        "idle": "<> time    ^v words    [] text    \\ theme    tab restart    esc quit",
+        "idle": "<> time   ^v words   [] text   \\ theme   = font   tab restart   esc quit",
         "run": "tab restart    esc quit",
-        "results": "tab new    ctrl+r retry    esc quit",
+        "results": "tab new    = font    ctrl+r retry    esc quit",
     }[phase]
     if len(full) <= width:
         return full
@@ -146,6 +173,7 @@ HELP = (
     "^v         words: 10, 25, 50, 100",
     "[]         text: english, 1k, punct, numbers, expert, quotes",
     "\\          color theme",
+    "=          letters: block or plain",
     "tab        new test",
     "ctrl+r     retry the same words",
     "ctrl+w     clear the current word",
@@ -165,6 +193,7 @@ HELP_COMPACT = (
     "^v      words",
     "[]      text",
     "\\       theme",
+    "=       block or plain",
     "tab     new test",
     "ctrl+r  retry these words",
     "ctrl+w  clear this word",

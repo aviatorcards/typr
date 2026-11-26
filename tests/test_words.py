@@ -3,8 +3,19 @@
 import random
 import unittest
 
-from typr.present import HELP, HELP_COMPACT, digits, fit_config, help_lines, hint_line, sparkline, span_width
-from typr.settings import Settings, cycle_corpus, cycle_time, cycle_words, summary, to_config
+from typr.present import (
+    HELP,
+    HELP_COMPACT,
+    digits,
+    fit_config,
+    help_lines,
+    hint_line,
+    sparkline,
+    span_width,
+    text_column,
+)
+from typr.font import FONT_ORDER
+from typr.settings import Settings, cycle_corpus, cycle_font, cycle_time, cycle_words, summary, to_config
 from typr.words import ENGLISH_200, ENGLISH_1K, generate, random_quote
 
 
@@ -61,6 +72,13 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(to_config(settings).describe(), "50 words 1k")
         cycle_corpus(settings, -1)
         self.assertEqual(summary(settings), "50 words · english")
+        cycle_font(settings, 1)
+        self.assertEqual(settings.font, "plain")
+        cycle_font(settings, 1)
+        self.assertEqual(settings.font, "block")
+        cycle_font(settings, -1)
+        self.assertEqual(settings.font, "plain")
+        self.assertEqual(len({len(name) for name in FONT_ORDER}), 1)
 
     def test_config_line_fits_and_does_not_jump(self):
         settings = Settings()
@@ -71,6 +89,17 @@ class SettingsTest(unittest.TestCase):
         idle = Settings(time_s=15)
         self.assertEqual(span_width(fit_config(selected, 80)), span_width(fit_config(idle, 80)))
         self.assertLessEqual(len(hint_line("idle", 40)), 40)
+        self.assertIn("font", hint_line("idle", 72))
+        self.assertLessEqual(len(hint_line("idle", 72)), 72)
+        plain = Settings(font="plain")
+        self.assertEqual(span_width(fit_config(settings, 80)), span_width(fit_config(plain, 80)))
+        shown = "".join(text for text, _role in fit_config(settings, 80))
+        self.assertIn("block", shown)
+        self.assertIn("typr", shown)
+        plain_line = "".join(text for text, _role in fit_config(plain, text_column(plain, 80)))
+        self.assertIn("plain", plain_line)
+        self.assertIn("serika", plain_line)
+        self.assertLessEqual(text_column(settings, 200), 90)
 
     def test_digits_align_and_the_chart_has_one_column_per_cell(self):
         rows = digits(86)
@@ -90,7 +119,7 @@ class SettingsTest(unittest.TestCase):
             commands = [
                 line
                 for line in lines
-                if line.startswith(("<", "^", "[", "\\", "tab", "ctrl", "esc"))
+                if line.startswith(("=", "<", "^", "[", "\\", "tab", "ctrl", "esc"))
             ]
             columns = {_description_column(line) for line in commands}
             self.assertEqual(columns, {next(iter(columns))})

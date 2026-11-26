@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from typr.engine import Config
+from typr.font import FONT_ORDER, active_font
 from typr.theme import THEME_ORDER
 
 TIME_OPTIONS = (15, 30, 60, 120)
@@ -20,6 +21,7 @@ class Settings:
     punct: bool = False
     numbers: bool = False
     theme: str = "serika"
+    font: str = "block"
     passage_name: str = ""
     base_corpus: str = "english"
 
@@ -119,3 +121,9 @@ def cycle_corpus(settings: Settings, direction: int) -> None:
 def cycle_theme(settings: Settings) -> None:
     index = THEME_ORDER.index(settings.theme) if settings.theme in THEME_ORDER else -1
     settings.theme = THEME_ORDER[(index + 1) % len(THEME_ORDER)]
+
+
+def cycle_font(settings: Settings, direction: int = 1) -> None:
+    name = active_font(settings.font)
+    index = FONT_ORDER.index(name)
+    settings.font = FONT_ORDER[(index + direction) % len(FONT_ORDER)]
