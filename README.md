@@ -1,6 +1,6 @@
 # typr
 
-A typing test in the terminal. Words on screen, a caret, and a result when you finish. On a larger window the words are drawn as block letters, kept small enough that several words fit on a line. `,` and `.` change that size (`small`, `medium`, `large`). Press `=` if you want the terminal's own font.
+A typing test in the terminal. Words on screen, a caret, and a result when you finish. The words use your terminal's own font, in a centered column with a blank line between rows, so you can read ahead. Press `=` for block letters; `,` and `.` change that size.
 
 ```bash
 python3 -m typr
@@ -34,11 +34,13 @@ python3 -m typr -w 50 --punct
 python3 -m typr -c quotes
 python3 -m typr --passage speech.txt
 python3 -m typr --theme nord
-python3 -m typr --font plain
+python3 -m typr --font block
 python3 -m typr --size medium
 ```
 
-`small` is the default block size. `medium` and `large` draw the same letters bigger, and step down when the window cannot hold them. The caret in block mode is an underline in the theme color, so the current letter stays readable.
+The default is plain text, about 72 columns wide (up to 80). Three lines stay on screen, and the top line scrolls away once you finish it. Typed letters use the theme accent, mistakes are red, and the words ahead stay dim. The caret is an underline on the current letter.
+
+Block letters are optional. `small` is their calmer size; `medium` and `large` are bigger and step down when the window cannot hold them.
 
 `--seed 1` repeats the same words every restart.
 

@@ -21,7 +21,7 @@ class Settings:
     punct: bool = False
     numbers: bool = False
     theme: str = "serika"
-    font: str = "block"
+    font: str = "plain"
     size: str = "small"
     passage_name: str = ""
     base_corpus: str = "english"

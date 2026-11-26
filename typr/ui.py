@@ -25,14 +25,15 @@ from typr.font import (
 from typr.history import History
 from typr.layout import layout, window
 from typr.present import (
-    digits,
     fit_config,
     help_lines,
     hint_line,
-    text_column,
+    plain_body_rows,
+    plain_word_y,
     round_half_up,
     sparkline,
     span_width,
+    text_column,
 )
 from typr.settings import (
     Settings,
@@ -87,6 +88,7 @@ class App:
         self.last_blink: bool | None = None
         self._attr_theme: str | None = None
         self._attr_cache: dict[str, int] = {}
+        self._frame: tuple | None = None
         self.test = self._build(to_config(settings), fixed_seed)
 
     def run(self, stdscr) -> None:
@@ -100,6 +102,15 @@ class App:
             stdscr.leaveok(True)
         except curses.error:
             pass
+        # Insert/delete-line sequences scroll the whole screen and flicker at speed.
+        for name in ("scrollok", "idlok", "idcok"):
+            method = getattr(stdscr, name, None)
+            if method is None:
+                continue
+            try:
+                method(False)
+            except curses.error:
+                pass
         self.dirty = True
         while True:
             now = time.perf_counter()
@@ -284,9 +295,14 @@ class App:
         return self._attr_cache
 
     def _draw(self, stdscr, blink: bool, now: float) -> None:
-        stdscr.erase()
         attrs = self._colors()
         height, width = stdscr.getmaxyx()
+        # Erase only when the frame changes. Typing repaints the same cells,
+        # so a fast run does not clear the screen on every key.
+        frame = (height, width, self.phase, self.settings.font, self.settings.size, self.settings.theme)
+        if frame != self._frame:
+            stdscr.erase()
+            self._frame = frame
         if height < 12 or width < 36:
             _draw_too_small(stdscr, attrs)
         elif self.phase == "help":
@@ -363,28 +379,29 @@ def _draw_test_plain(stdscr, attrs, settings: Settings, test: Test, history: His
     height, width = stdscr.getmaxyx()
     column = text_column(settings, width)
     left = max(0, (width - column) // 2)
-    top = max(0, (height - 9) // 2)
+    top = max(0, (height - plain_body_rows()) // 2)
     phase = "run" if test.started and not test.finished else "idle"
-    _paint(stdscr, top, left, fit_config(settings, column), attrs, mute=phase == "run")
+    _paint(stdscr, top, left, fit_config(settings, column), attrs, mute=phase == "run", width=column)
+    _clear_row(stdscr, top + 1, left, column)
     current = min(test.current, max(0, len(test.targets) - 1))
     lines = window(layout(test.targets, test.typed, current, column, blink), current)
     for index, line in enumerate(lines):
-        _paint_cells(stdscr, top + 2 + index, left, line.cells, attrs, column)
+        _paint_cells(stdscr, plain_word_y(top, index), left, line.cells, attrs, column)
+        if index < len(lines) - 1:
+            _clear_row(stdscr, plain_word_y(top, index) + 1, left, column)
+    _clear_row(stdscr, top + 7, left, column)
     best = _best(history, test.config.bucket)
-    _paint(stdscr, top + 6, left, _live_stats(test, best, column, now), attrs)
-    _put(stdscr, top + 8, left, hint_line(phase, column), attrs["dim"])
+    _paint(stdscr, top + 8, left, _live_stats(test, best, column, now), attrs, width=column)
+    _clear_row(stdscr, top + 9, left, column)
+    _put_fit(stdscr, top + 10, left, hint_line(phase, column), attrs["dim"], column)
 
 
 def _draw_results(stdscr, attrs, view: ResultView, test: Test, font: str = "block") -> None:
     height, width = stdscr.getmaxyx()
     number = str(round_half_up(view.stats.wpm))
     scale = 0 if active_font(font) == "plain" else figure_scale(width, height)
-    if scale >= 1:
-        figure = write(number, scale)
-    elif height >= 16 and width >= 40:
-        figure = digits(round_half_up(view.stats.wpm))
-    else:
-        figure = []
+    # Plain results use the terminal font. Block results keep the scaled figure.
+    figure = write(number, scale) if scale >= 1 else []
     note, note_role = _result_note(view)
     figure_w = len(figure[0]) if figure else 0
     text_w = min(72, max(20, width - 4))
@@ -574,11 +591,32 @@ def _best(history: History, bucket: str) -> float | None:
     return max(scores) if scores else None
 
 
-def _paint(stdscr, y: int, x: int, spans: list[tuple[str, str]], attrs, mute: bool = False) -> None:
+def cell_attr(kind: str, attrs: dict[str, int]) -> int:
+    """Color for one plain-text cell. The caret underlines the letter."""
+    if kind == "caret":
+        return attrs.get("accent", 0) | curses.A_UNDERLINE
+    return attrs.get(_KIND.get(kind, "text"), 0)
+
+
+def _paint(stdscr, y: int, x: int, spans: list[tuple[str, str]], attrs, mute: bool = False, width: int = 0) -> None:
+    start = x
     for text, role in spans:
         attr = attrs["dim"] if mute else attrs.get(role, 0)
         _put(stdscr, y, x, text, attr)
         x += len(text)
+    if width > x - start:
+        _put(stdscr, y, x, " " * (width - (x - start)), 0)
+
+
+def _clear_row(stdscr, y: int, x: int, width: int) -> None:
+    _put(stdscr, y, x, " " * width, 0)
+
+
+def _put_fit(stdscr, y: int, x: int, text: str, attr: int, width: int) -> None:
+    shown = text[:width]
+    _put(stdscr, y, x, shown, attr)
+    if len(shown) < width:
+        _put(stdscr, y, x + len(shown), " " * (width - len(shown)), 0)
 
 
 def _paint_cells(stdscr, y: int, x: int, cells, attrs, limit: int) -> None:
@@ -593,9 +631,11 @@ def _paint_cells(stdscr, y: int, x: int, cells, attrs, limit: int) -> None:
         text = "".join(cell.ch for cell in cells[index:nxt])
         room = end - column
         text = text[:room]
-        _put(stdscr, y, column, text, attrs.get(_KIND.get(kind, "text"), 0))
+        _put(stdscr, y, column, text, cell_attr(kind, attrs))
         column += len(text)
         index = nxt
+    if column < end:
+        _put(stdscr, y, column, " " * (end - column), 0)
 
 
 def _paint_bars(stdscr, y: int, x: int, bars: list[tuple[str, int]], attrs) -> None:

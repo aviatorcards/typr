@@ -96,8 +96,8 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--font",
         choices=FONT_ORDER,
-        default="block",
-        help="block letters, or plain to use the terminal font",
+        default="plain",
+        help="plain uses the terminal font; block is the scaled-up face",
     )
     parser.add_argument(
         "--size",

@@ -1,8 +1,10 @@
 """Word wrapping and the caret."""
 
+import curses
 import unittest
 
 from typr.layout import layout, plain, window
+from typr.ui import cell_attr
 
 
 def kinds(words, typed, current, width, caret=True):
@@ -54,6 +56,38 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual([plain(line) for line in lines], ["aa", "bb"])
         wide = layout(["aa", "bb"], ["", ""], 0, 30, True, measure=measure, gap=1)
         self.assertEqual([plain(line) for line in wide], ["aa bb"])
+
+    def test_typing_ahead_does_not_reflow_the_lines(self):
+        words = ["there", "before", "wanted", "for", "why", "but"]
+        before = layout(words, [""] * len(words), 0, 72, True)
+        after = layout(words, ["there", "bef", "", "", "", ""], 1, 72, True)
+        self.assertEqual([plain(line) for line in before], [plain(line) for line in after])
+        self.assertEqual(window(before, 0)[0].words, window(after, 1)[0].words)
+
+    def test_the_window_shifts_one_line_when_the_first_is_done(self):
+        words = ["aa", "bb", "cc", "dd", "ee", "ff"]
+        lines = layout(words, [""] * len(words), 0, 5, True)
+        self.assertEqual([plain(line) for line in lines], ["aa bb", "cc dd", "ee ff"])
+        self.assertEqual([plain(line) for line in window(lines, 0)], ["aa bb", "cc dd", "ee ff"])
+        self.assertEqual([plain(line) for line in window(lines, 2)], ["cc dd", "ee ff", ""])
+
+    def test_the_plain_caret_underlines_the_letter(self):
+        attrs = {
+            "accent": 1,
+            "untyped": 2,
+            "caret": 4,
+            "correct": 8,
+            "incorrect": 16,
+            "extra": 32,
+            "space": 2,
+        }
+        marked = cell_attr("caret", attrs)
+        self.assertEqual(marked & curses.A_UNDERLINE, curses.A_UNDERLINE)
+        self.assertEqual(marked & ~curses.A_UNDERLINE, attrs["accent"])
+        self.assertNotEqual(marked, attrs["caret"])
+        self.assertEqual(cell_attr("correct", attrs), attrs["correct"])
+        self.assertEqual(cell_attr("incorrect", attrs), attrs["incorrect"])
+        self.assertEqual(cell_attr("untyped", attrs), attrs["untyped"])
 
     def test_the_window_starts_at_the_active_line(self):
         words = ["aa", "bb", "cc", "dd", "ee"]
