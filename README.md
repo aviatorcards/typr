@@ -1,6 +1,6 @@
 # typr
 
-A typing test in the terminal. Words on screen, a caret, and a result when you finish. On a larger window the words and the result are drawn as bigger block letters. Press `=` if those letters are hard to read and typr will use your terminal's own font.
+A typing test in the terminal. Words on screen, a caret, and a result when you finish. The words use your terminal's own font, in a centered column with a blank line between rows, so you can read ahead. Press `=` for block letters; `,` and `.` change that size.
 
 ```bash
 python3 -m typr
@@ -18,6 +18,7 @@ The clock starts on the first character you type. Backspace fixes the current wo
 | `[` `]` | english, 1k, punct, numbers, expert, quotes | | |
 | `\` | color theme | | color theme |
 | `=` `-` | block or plain letters | | block or plain letters |
+| `,` `.` | letter size | | letter size |
 | `tab` | new words | restart | new test |
 | `ctrl+r` | retry these words | retry these words | retry these words |
 | `ctrl+w` | | clear the current word | |
@@ -33,8 +34,13 @@ python3 -m typr -w 50 --punct
 python3 -m typr -c quotes
 python3 -m typr --passage speech.txt
 python3 -m typr --theme nord
-python3 -m typr --font plain
+python3 -m typr --font block
+python3 -m typr --size medium
 ```
+
+The default is plain text, about 72 columns wide (up to 80). Three lines stay on screen, and the top line scrolls away once you finish it. Typed letters use the theme accent, mistakes are red, and the words ahead stay dim. The caret is an underline on the current letter.
+
+Block letters are optional. `small` is their calmer size; `medium` and `large` are bigger and step down when the window cannot hold them.
 
 `--seed 1` repeats the same words every restart.
 

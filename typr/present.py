@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typr.font import active_font
+from typr.font import active_font, size_label
 from typr.settings import Settings, corpus_label, summary
 
 # Three rows, each glyph three columns. A space separates digits.
@@ -103,17 +103,19 @@ def config_spans(
             spans.append((" ", "dim"))
         selected = live and settings.limit == "time" and settings.time_s == value
         spans.append(_chip(str(value), selected))
-    spans.append(("   ", "dim"))
+    spans.append(("  ", "dim"))
     for index, value in enumerate((10, 25, 50, 100)):
         if index:
             spans.append((" ", "dim"))
         selected = live and settings.limit == "words" and settings.words_n == value
         spans.append(_chip(str(value), selected))
-    spans.append(("   ", "dim"))
+    spans.append(("  ", "dim"))
     spans.append((corpus_label(settings), "selected"))
     if show_font:
         spans.append(("  ", "dim"))
         spans.append((active_font(settings.font), "text"))
+        spans.append(("  ", "dim"))
+        spans.append((size_label(settings.size), "text"))
     if show_theme:
         spans.append(("  ", "dim"))
         spans.append((settings.theme, "dim"))
@@ -121,19 +123,31 @@ def config_spans(
 
 
 def text_column(settings: Settings, width: int) -> int:
-    """Width of the plain-font word column.
+    """Centered reading column for the terminal font.
 
-    A huge window stays near 72 columns. A smaller one still grows enough to
-    keep the font name and the theme on the option line.
+    A wide window stays at 72 columns, or up to 80 if the option line needs
+    the room. A narrower window uses what it has.
     """
-    needed = span_width(config_spans(settings, True, True, True))
     room = max(20, width - 4)
-    return min(room, max(72, needed))
+    if room <= 72:
+        return room
+    needed = span_width(config_spans(settings, True, True, True))
+    return min(room, max(72, min(needed, 80)))
+
+
+def plain_body_rows() -> int:
+    """Rows for options, three word lines with a blank between, stats, and the hint."""
+    return 11
+
+
+def plain_word_y(top: int, index: int) -> int:
+    """Screen row of word line ``index``. A blank row sits between lines."""
+    return top + 2 + index * 2
 
 
 def fit_config(settings: Settings, width: int) -> list[tuple[str, str]]:
-    # Drop the theme, then the name, before the font. The font is how you
-    # get ordinary letters back when the block face is hard to read.
+    # Drop the theme, then the name, before the font. The font name is how
+    # you turn block letters on.
     for show_name, show_theme, show_font in (
         (True, True, True),
         (True, False, True),
@@ -148,9 +162,9 @@ def fit_config(settings: Settings, width: int) -> list[tuple[str, str]]:
 
 def hint_line(phase: str, width: int) -> str:
     full = {
-        "idle": "<> time   ^v words   [] text   \\ theme   = font   tab restart   esc quit",
+        "idle": "<> time  ^v words  [] text  \\ theme  = font  ,. size  tab  esc quit",
         "run": "tab restart    esc quit",
-        "results": "tab new    = font    ctrl+r retry    esc quit",
+        "results": "tab new   = font   ,. size   ctrl+r retry   esc quit",
     }[phase]
     if len(full) <= width:
         return full
@@ -173,7 +187,8 @@ HELP = (
     "^v         words: 10, 25, 50, 100",
     "[]         text: english, 1k, punct, numbers, expert, quotes",
     "\\          color theme",
-    "=          letters: block or plain",
+    "=          letters: plain or block",
+    ",.         size: small, medium, large",
     "tab        new test",
     "ctrl+r     retry the same words",
     "ctrl+w     clear the current word",
@@ -193,12 +208,12 @@ HELP_COMPACT = (
     "^v      words",
     "[]      text",
     "\\       theme",
-    "=       block or plain",
+    "=       plain or block",
+    ",.      letter size",
     "tab     new test",
     "ctrl+r  retry these words",
     "ctrl+w  clear this word",
     "esc     quit",
-    "",
     "any key to return",
 )
 

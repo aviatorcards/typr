@@ -10,12 +10,23 @@ from typr.present import (
     fit_config,
     help_lines,
     hint_line,
+    plain_body_rows,
+    plain_word_y,
     sparkline,
     span_width,
     text_column,
 )
-from typr.font import FONT_ORDER
-from typr.settings import Settings, cycle_corpus, cycle_font, cycle_time, cycle_words, summary, to_config
+from typr.font import FONT_ORDER, size_label
+from typr.settings import (
+    Settings,
+    cycle_corpus,
+    cycle_font,
+    cycle_size,
+    cycle_time,
+    cycle_words,
+    summary,
+    to_config,
+)
 from typr.words import ENGLISH_200, ENGLISH_1K, generate, random_quote
 
 
@@ -72,34 +83,60 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(to_config(settings).describe(), "50 words 1k")
         cycle_corpus(settings, -1)
         self.assertEqual(summary(settings), "50 words · english")
-        cycle_font(settings, 1)
         self.assertEqual(settings.font, "plain")
         cycle_font(settings, 1)
         self.assertEqual(settings.font, "block")
-        cycle_font(settings, -1)
+        cycle_font(settings, 1)
         self.assertEqual(settings.font, "plain")
+        cycle_font(settings, -1)
+        self.assertEqual(settings.font, "block")
         self.assertEqual(len({len(name) for name in FONT_ORDER}), 1)
+        self.assertEqual(settings.size, "small")
+        cycle_size(settings, 1)
+        self.assertEqual(settings.size, "medium")
+        cycle_size(settings, 1)
+        self.assertEqual(settings.size, "large")
+        cycle_size(settings, 1)
+        self.assertEqual(settings.size, "small")
+        self.assertEqual(len({len(size_label(name)) for name in ("small", "medium", "large")}), 1)
 
     def test_config_line_fits_and_does_not_jump(self):
         settings = Settings()
-        spans = fit_config(settings, 72)
-        self.assertLessEqual(span_width(spans), 72)
-        self.assertIn("typr", "".join(text for text, _ in spans))
+        spans = fit_config(settings, 84)
+        self.assertLessEqual(span_width(spans), 84)
+        shown_wide = "".join(text for text, _ in spans)
+        self.assertIn("typr", shown_wide)
+        self.assertIn("small", shown_wide)
+        self.assertLessEqual(span_width(fit_config(settings, 72)), 72)
         selected = Settings(time_s=60)
         idle = Settings(time_s=15)
-        self.assertEqual(span_width(fit_config(selected, 80)), span_width(fit_config(idle, 80)))
+        self.assertEqual(span_width(fit_config(selected, 90)), span_width(fit_config(idle, 90)))
+        self.assertEqual(
+            span_width(fit_config(Settings(size="small"), 100)),
+            span_width(fit_config(Settings(size="medium"), 100)),
+        )
         self.assertLessEqual(len(hint_line("idle", 40)), 40)
         self.assertIn("font", hint_line("idle", 72))
+        self.assertIn("size", hint_line("idle", 72))
         self.assertLessEqual(len(hint_line("idle", 72)), 72)
-        plain = Settings(font="plain")
-        self.assertEqual(span_width(fit_config(settings, 80)), span_width(fit_config(plain, 80)))
-        shown = "".join(text for text, _role in fit_config(settings, 80))
-        self.assertIn("block", shown)
+        block = Settings(font="block")
+        self.assertEqual(span_width(fit_config(settings, 90)), span_width(fit_config(block, 90)))
+        shown = "".join(text for text, _role in fit_config(settings, 90))
+        self.assertIn("plain", shown)
         self.assertIn("typr", shown)
-        plain_line = "".join(text for text, _role in fit_config(plain, text_column(plain, 80)))
+        plain_line = "".join(text for text, _role in fit_config(settings, 100))
         self.assertIn("plain", plain_line)
         self.assertIn("serika", plain_line)
-        self.assertLessEqual(text_column(settings, 200), 90)
+        column = text_column(settings, 120)
+        self.assertGreaterEqual(column, 60)
+        self.assertLessEqual(column, 80)
+        self.assertLessEqual(text_column(settings, 200), 80)
+        self.assertEqual(plain_body_rows(), 11)
+        self.assertEqual([plain_word_y(0, index) for index in range(3)], [2, 4, 6])
+        from typr.layout import layout, plain
+
+        first = plain(layout(["there", "before", "wanted", "for", "why", "but", "sure"], [""] * 7, 0, column, True)[0])
+        self.assertGreaterEqual(len(first.split()), 5)
 
     def test_digits_align_and_the_chart_has_one_column_per_cell(self):
         rows = digits(86)
@@ -119,7 +156,7 @@ class SettingsTest(unittest.TestCase):
             commands = [
                 line
                 for line in lines
-                if line.startswith(("=", "<", "^", "[", "\\", "tab", "ctrl", "esc"))
+                if line.startswith(("=", "<", "^", "[", "\\", ",", "tab", "ctrl", "esc"))
             ]
             columns = {_description_column(line) for line in commands}
             self.assertEqual(columns, {next(iter(columns))})
