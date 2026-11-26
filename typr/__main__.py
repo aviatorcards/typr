@@ -11,7 +11,7 @@ from pathlib import Path
 
 from typr import __version__
 from typr.history import History, default_dir
-from typr.font import FONT_ORDER
+from typr.font import FONT_ORDER, SIZE_ORDER
 from typr.settings import Settings
 from typr.theme import THEME_ORDER
 from typr.ui import App
@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     except locale.Error:
         pass
     os.environ.setdefault("ESCDELAY", "25")
-    settings = Settings(theme=args.theme, font=args.font)
+    settings = Settings(theme=args.theme, font=args.font, size=args.size)
     if args.words is not None:
         settings.limit = "words"
         settings.words_n = args.words
@@ -76,7 +76,8 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
         description="A terminal typing test.",
         epilog=(
             "Inside the test, arrow keys change the length, [ ] change the text, "
-            "\\ changes the theme, = changes the font, tab starts a new test, and esc quits."
+            "\\ changes the theme, = changes the font, comma and period change the size, "
+            "tab starts a new test, and esc quits."
         ),
     )
     limit = parser.add_mutually_exclusive_group()
@@ -96,7 +97,13 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
         "--font",
         choices=FONT_ORDER,
         default="block",
-        help="block letters grow with the window; plain uses the terminal font",
+        help="block letters, or plain to use the terminal font",
+    )
+    parser.add_argument(
+        "--size",
+        choices=SIZE_ORDER,
+        default="small",
+        help="block letter size; small is the calm default",
     )
     parser.add_argument("--seed", type=int, help="repeat the same words every restart")
     parser.add_argument("--passage", type=Path, help="type this text file instead of random words")

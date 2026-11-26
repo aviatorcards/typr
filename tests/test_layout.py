@@ -45,6 +45,16 @@ class LayoutTest(unittest.TestCase):
         lines = layout(["hello", "world", "again"], ["", "", ""], 0, 11, True)
         self.assertEqual([plain(line) for line in lines], ["hello world", "again"])
 
+    def test_a_measured_line_wraps_on_glyph_width(self):
+        def measure(char):
+            return 4 if char != " " else 3
+
+        lines = layout(["aa", "bb"], ["", ""], 0, 11, True, measure=measure, gap=1)
+        # "aa" is 4+1+4 = 9. The space is 3, so 9+3 does not fit in 11 and the word wraps.
+        self.assertEqual([plain(line) for line in lines], ["aa", "bb"])
+        wide = layout(["aa", "bb"], ["", ""], 0, 30, True, measure=measure, gap=1)
+        self.assertEqual([plain(line) for line in wide], ["aa bb"])
+
     def test_the_window_starts_at_the_active_line(self):
         words = ["aa", "bb", "cc", "dd", "ee"]
         lines = layout(words, [""] * 5, 2, 2, True)

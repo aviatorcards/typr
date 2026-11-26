@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typr.font import active_font
+from typr.font import active_font, size_label
 from typr.settings import Settings, corpus_label, summary
 
 # Three rows, each glyph three columns. A space separates digits.
@@ -114,6 +114,8 @@ def config_spans(
     if show_font:
         spans.append(("  ", "dim"))
         spans.append((active_font(settings.font), "text"))
+        spans.append(("  ", "dim"))
+        spans.append((size_label(settings.size), "text"))
     if show_theme:
         spans.append(("  ", "dim"))
         spans.append((settings.theme, "dim"))
@@ -148,9 +150,9 @@ def fit_config(settings: Settings, width: int) -> list[tuple[str, str]]:
 
 def hint_line(phase: str, width: int) -> str:
     full = {
-        "idle": "<> time   ^v words   [] text   \\ theme   = font   tab restart   esc quit",
+        "idle": "<> time  ^v words  [] text  \\ theme  = font  ,. size  tab  esc quit",
         "run": "tab restart    esc quit",
-        "results": "tab new    = font    ctrl+r retry    esc quit",
+        "results": "tab new   = font   ,. size   ctrl+r retry   esc quit",
     }[phase]
     if len(full) <= width:
         return full
@@ -174,6 +176,7 @@ HELP = (
     "[]         text: english, 1k, punct, numbers, expert, quotes",
     "\\          color theme",
     "=          letters: block or plain",
+    ",.         size: small, medium, large",
     "tab        new test",
     "ctrl+r     retry the same words",
     "ctrl+w     clear the current word",
@@ -194,11 +197,11 @@ HELP_COMPACT = (
     "[]      text",
     "\\       theme",
     "=       block or plain",
+    ",.      letter size",
     "tab     new test",
     "ctrl+r  retry these words",
     "ctrl+w  clear this word",
     "esc     quit",
-    "",
     "any key to return",
 )
 

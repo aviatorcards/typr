@@ -10,12 +10,14 @@ from dataclasses import dataclass
 from typr.engine import Config, Stats, Test, make_test, new_rng
 from typr.font import (
     active_font,
-    advance,
     block_rows,
-    char_columns,
+    caret_bars,
     figure_scale,
+    glyph_width,
     ink_rows,
+    letter_gap,
     line_height,
+    places,
     result_plan,
     text_scale,
     write,
@@ -36,6 +38,7 @@ from typr.settings import (
     Settings,
     cycle_corpus,
     cycle_font,
+    cycle_size,
     cycle_theme,
     cycle_time,
     cycle_words,
@@ -154,6 +157,9 @@ class App:
             return True
         if key in ("=", "-") and not self._running():
             cycle_font(self.settings, 1 if key == "=" else -1)
+            return True
+        if key in (",", ".") and not self._running():
+            cycle_size(self.settings, 1 if key == "." else -1)
             return True
         if key == "tab":
             self._new()
@@ -320,30 +326,37 @@ def _draw_test(stdscr, attrs, settings: Settings, test: Test, history: History, 
     if active_font(settings.font) == "plain":
         _draw_test_plain(stdscr, attrs, settings, test, history, blink, now)
         return
-    longest = max((len(word) for word in test.targets), default=8)
-    scale = text_scale(width, height, longest)
+    longest = max(test.targets, key=len, default="")
+    scale = text_scale(width, height, longest, settings.size)
     if scale <= 0:
         _draw_test_plain(stdscr, attrs, settings, test, history, blink, now)
         return
-    columns = char_columns(width, scale)
-    pixel_w = columns * advance(scale)
-    left = max(0, (width - pixel_w) // 2)
+    usable = max(4, width - 2)
+    left = max(0, (width - usable) // 2)
     top = max(0, (height - block_rows(scale)) // 2)
     phase = "run" if test.started and not test.finished else "idle"
-    _paint(stdscr, top, left, fit_config(settings, pixel_w), attrs, mute=phase == "run")
+    _paint(stdscr, top, left, fit_config(settings, usable), attrs, mute=phase == "run")
     current = min(test.current, max(0, len(test.targets) - 1))
-    lines = window(layout(test.targets, test.typed, current, columns, blink), current)
+    lines = window(
+        layout(
+            test.targets,
+            test.typed,
+            current,
+            usable,
+            blink,
+            measure=lambda ch, scale=scale: glyph_width(ch, scale),
+            gap=letter_gap(scale),
+        ),
+        current,
+    )
     y = top + 2
     step = line_height(scale)
-    for index, line in enumerate(lines):
+    for line in lines:
         _paint_glyphs(stdscr, y, left, line.cells, scale, attrs)
-        y += step
-        if index < len(lines) - 1:
-            y += 1
-    y += 1
+        y += step + 1
     best = _best(history, test.config.bucket)
-    _paint(stdscr, y, left, _live_stats(test, best, pixel_w, now), attrs)
-    _put(stdscr, y + 2, left, hint_line(phase, pixel_w), attrs["dim"])
+    _paint(stdscr, y, left, _live_stats(test, best, usable, now), attrs)
+    _put(stdscr, y + 2, left, hint_line(phase, usable), attrs["dim"])
 
 
 def _draw_test_plain(stdscr, attrs, settings: Settings, test: Test, history: History, blink: bool, now: float) -> None:
@@ -439,25 +452,20 @@ def _result_note(view: ResultView) -> tuple[str, str]:
 
 
 def _paint_glyphs(stdscr, y: int, x: int, cells, scale: int, attrs) -> None:
+    """Draw one word line. The caret is an underline, so the letter stays readable."""
     if not cells:
         return
-    gap = " " * scale
+    text = "".join(cell.ch for cell in cells)
+    spots = places(text, scale)
     rasters = [ink_rows(cell.ch, scale) for cell in cells]
     for row in range(len(rasters[0])):
-        column = x
-        index = 0
-        while index < len(cells):
-            kind = cells[index].kind
-            parts = [rasters[index][row]]
-            index += 1
-            while index < len(cells) and cells[index].kind == kind:
-                parts.append(gap)
-                parts.append(rasters[index][row])
-                index += 1
-            _put(stdscr, y + row, column, "".join(parts), attrs.get(_KIND.get(kind, "text"), 0))
-            column += sum(len(part) for part in parts)
-            if index < len(cells):
-                column += len(gap)
+        for (origin, _width), cell, raster in zip(spots, cells, rasters):
+            # The reverse caret pair turns half-blocks into a black/yellow mix.
+            kind = "untyped" if cell.kind == "caret" else cell.kind
+            _put(stdscr, y + row, x + origin, raster[row], attrs.get(_KIND.get(kind, "text"), 0))
+    bar = attrs.get("accent", 0)
+    for origin, glyph in caret_bars(text, [cell.kind for cell in cells], scale):
+        _put(stdscr, y + len(rasters[0]), x + origin, glyph, bar)
 
 
 def _live_stats(test: Test, best: float | None, width: int, now: float) -> list[tuple[str, str]]:

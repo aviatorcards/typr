@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from typr.engine import Config
-from typr.font import FONT_ORDER, active_font
+from typr.font import FONT_ORDER, SIZE_ORDER, active_font, active_size
 from typr.theme import THEME_ORDER
 
 TIME_OPTIONS = (15, 30, 60, 120)
@@ -22,6 +22,7 @@ class Settings:
     numbers: bool = False
     theme: str = "serika"
     font: str = "block"
+    size: str = "small"
     passage_name: str = ""
     base_corpus: str = "english"
 
@@ -127,3 +128,9 @@ def cycle_font(settings: Settings, direction: int = 1) -> None:
     name = active_font(settings.font)
     index = FONT_ORDER.index(name)
     settings.font = FONT_ORDER[(index + direction) % len(FONT_ORDER)]
+
+
+def cycle_size(settings: Settings, direction: int = 1) -> None:
+    name = active_size(settings.size)
+    index = SIZE_ORDER.index(name)
+    settings.size = SIZE_ORDER[(index + direction) % len(SIZE_ORDER)]

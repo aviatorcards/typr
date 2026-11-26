@@ -2,10 +2,14 @@
 
 The caret is an overlay. Turning the blink off changes color, not width,
 so the words do not shift every half second.
+
+``measure`` is optional. Without it, every cell is one column, which is
+how plain text wraps. Block letters pass the width of each glyph.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 
@@ -27,6 +31,8 @@ def layout(
     current: int,
     width: int,
     caret_on: bool,
+    measure: Callable[[str], int] | None = None,
+    gap: int = 0,
 ) -> list[Line]:
     width = max(4, width)
     rendered: list[tuple[int, list[Cell], bool]] = []
@@ -42,7 +48,7 @@ def layout(
         tokens.append(("word", cells, index))
         if caret_after:
             tokens.append(("gap", [Cell(" ", "caret" if caret_on else "space")], None))
-    return _wrap(tokens, width)
+    return _wrap(tokens, width, measure, gap)
 
 
 def window(lines: list[Line], current: int, rows: int = 3) -> list[Line]:
@@ -84,7 +90,23 @@ def _render_word(
     return cells, caret_after
 
 
-def _wrap(tokens: list[tuple[str, list[Cell], int | None]], width: int) -> list[Line]:
+def _token_width(cells: list[Cell], measure: Callable[[str], int] | None, gap: int) -> int:
+    if measure is None:
+        return len(cells)
+    total = 0
+    for index, cell in enumerate(cells):
+        total += measure(cell.ch)
+        if gap and index + 1 < len(cells) and cell.ch != " " and cells[index + 1].ch != " ":
+            total += gap
+    return total
+
+
+def _wrap(
+    tokens: list[tuple[str, list[Cell], int | None]],
+    width: int,
+    measure: Callable[[str], int] | None = None,
+    gap: int = 0,
+) -> list[Line]:
     lines: list[Line] = []
     cells: list[Cell] = []
     words: list[int] = []
@@ -99,7 +121,7 @@ def _wrap(tokens: list[tuple[str, list[Cell], int | None]], width: int) -> list[
         used = 0
 
     for kind, token_cells, index in tokens:
-        need = len(token_cells)
+        need = _token_width(token_cells, measure, gap)
         is_caret_gap = kind == "gap" and token_cells and token_cells[0].kind == "caret"
         if kind == "gap" and not cells:
             if is_caret_gap:
